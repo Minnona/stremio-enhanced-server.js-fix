@@ -1,0 +1,73 @@
+name: Apply HLS rolling cache fix
+
+on:
+  push:
+    branches:
+      - fix/hls-segment-thrashing
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/hls-segment-thrashing
+
+      - name: Keep recent HLS media segments buffered
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("server.js")
+          text = path.read_text()
+          old = '                "video" !== stream.track && "audio" !== stream.track && targetSequenceNumber === sequenceNumber || clear();'
+          new = '''                if ("video" === stream.track || "audio" === stream.track) {
+                    const minSequenceNumber = targetSequenceNumber - 12;
+                    for (const [mediaSegmentSequenceNumber, mediaSegment] of mediaSegments.entries()) mediaSegmentSequenceNumber < minSequenceNumber && (mediaSegment.buffer = null, 
+                    mediaSegment.extraSegments.forEach((extraSegment => extraSegment.buffer = null)));
+                } else targetSequenceNumber !== sequenceNumber && clear();'''
+
+          count = text.count(old)
+          if count == 1:
+              text = text.replace(old, new, 1)
+              path.write_text(text)
+              print("Patched HLS mediaSegment to retain a rolling 12-segment A/V cache")
+          elif 'const minSequenceNumber = targetSequenceNumber - 12;' in text:
+              print("Patch already applied")
+          else:
+              raise SystemExit(f"Expected exactly one HLS clear expression, found {count}")
+          PY
+
+      - name: Validate server.js
+        run: node --check server.js
+
+      - name: Verify HLS patches
+        shell: bash
+        run: |
+          if grep -Fq 'targetSequenceNumber !== sequenceNumber && (convertMutex.cancel(), stop());' server.js; then
+            echo 'Old pre-lock cancellation line is present'
+            exit 1
+          fi
+          grep -Fq 'targetSequenceNumber !== sequenceNumber && (stop(), await seek(targetSequenceNumber));' server.js
+          grep -Fq 'const minSequenceNumber = targetSequenceNumber - 12;' server.js
+          if grep -Fq '"video" !== stream.track && "audio" !== stream.track && targetSequenceNumber === sequenceNumber || clear();' server.js; then
+            echo 'Old full-clear A/V expression is still present'
+            exit 1
+          fi
+
+      - name: Commit patched server.js
+        shell: bash
+        run: |
+          if git diff --quiet -- server.js; then
+            echo "No server.js changes to commit"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add server.js
+          git commit -m "Keep rolling HLS segment cache"
+          git push origin HEAD:fix/hls-segment-thrashing
