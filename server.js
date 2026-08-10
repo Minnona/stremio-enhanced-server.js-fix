@@ -81564,7 +81564,7 @@
                 Buffer.concat([ targetMediaSegment.buffer ].concat("video" === stream.track ? targetMediaSegment.extraSegments.map((({buffer: buffer}) => buffer)) : []));
                 "video" !== stream.track && "audio" !== stream.track && targetSequenceNumber === sequenceNumber || clear();
                 try {
-                    targetSequenceNumber !== sequenceNumber && await seek(targetSequenceNumber);
+                    targetSequenceNumber !== sequenceNumber && (stop(), await seek(targetSequenceNumber));
                     try {
                         await readOutputSegment(targetSequenceNumber);
                     } catch (error) {
