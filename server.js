@@ -81562,7 +81562,11 @@
                 const release = await convertMutex.acquire();
                 if (null !== targetMediaSegment.buffer) return release(), debug(`mediaSegment:buffered:${targetSequenceNumber}`), 
                 Buffer.concat([ targetMediaSegment.buffer ].concat("video" === stream.track ? targetMediaSegment.extraSegments.map((({buffer: buffer}) => buffer)) : []));
-                "video" !== stream.track && "audio" !== stream.track && targetSequenceNumber === sequenceNumber || clear();
+                if ("video" === stream.track || "audio" === stream.track) {
+          const minSequenceNumber = targetSequenceNumber - 12;
+          for (const [mediaSegmentSequenceNumber, mediaSegment] of mediaSegments.entries()) mediaSegmentSequenceNumber < minSequenceNumber && (mediaSegment.buffer = null, 
+          mediaSegment.extraSegments.forEach((extraSegment => extraSegment.buffer = null)));
+      } else targetSequenceNumber !== sequenceNumber && clear();
                 try {
                     targetSequenceNumber !== sequenceNumber && (stop(), await seek(targetSequenceNumber));
                     try {
