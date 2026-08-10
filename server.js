@@ -81559,7 +81559,6 @@
             if (await init(), !mediaSegments.has(targetSequenceNumber)) throw new Error("Sequence number out of range");
             const targetMediaSegment = mediaSegments.get(targetSequenceNumber);
             if (null === targetMediaSegment.buffer || targetMediaSegment.extraSegments.some((({buffer: buffer}) => null === buffer))) {
-                targetSequenceNumber !== sequenceNumber && (convertMutex.cancel(), stop());
                 const release = await convertMutex.acquire();
                 if (null !== targetMediaSegment.buffer) return release(), debug(`mediaSegment:buffered:${targetSequenceNumber}`), 
                 Buffer.concat([ targetMediaSegment.buffer ].concat("video" === stream.track ? targetMediaSegment.extraSegments.map((({buffer: buffer}) => buffer)) : []));
