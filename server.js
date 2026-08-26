@@ -18137,7 +18137,7 @@
                 EngineFS.emit("engine-error:" + infoHash, err), EngineFS.emit("engine-error", infoHash, err);
             })), e.on("invalid-piece", (function(p) {
                 EngineFS.emit("engine-invalid-piece:" + infoHash, p), EngineFS.emit("engine-invalid-piece", infoHash, p);
-            })), Emit([ "engine-created", infoHash ])), e.ready((function() {
+            })), Emit([ "engine-created", infoHash ])), isNew && e.listen && e.listen(6881, (function() {})), e.ready((function() {
                 EngineFS.emit("engine-ready:" + infoHash, e.torrent), EngineFS.emit("engine-ready", infoHash, e.torrent);
             }));
         }));
@@ -18194,7 +18194,8 @@
     var router = Router(), externalRouter = Router();
     function prewarmStream(hash, idx) {
         engines[hash] && engines[hash].ready((function() {
-            engines[hash].files[idx].select();
+            var engine = engines[hash], torrentFile = engine.torrent && engine.torrent.files[idx];
+            torrentFile && torrentFile.__cacheEvents || engine.files[idx].select();
         }));
     }
     var jsonHead = {
@@ -46932,8 +46933,8 @@
         }, enginefs.getDefaults = function(ih) {
             var MAX_CONNECTIONS = isPositiveInteger(settings.btMaxConnections) ? settings.btMaxConnections : 35, HANDSHAKE_TIMEOUT = isPositiveInteger(settings.btHandshakeTimeout) ? settings.btHandshakeTimeout : 2e4, REQUEST_TIMEOUT = isPositiveInteger(settings.btRequestTimeout) ? settings.btRequestTimeout : 4e3, DOWNLOAD_SPEED_LIMIT = isPositiveInteger(settings.btDownloadSpeedSoftLimit) ? settings.btDownloadSpeedSoftLimit : 1677721.6, DOWNLOAD_SPEED_HARD_LIMIT = isPositiveInteger(settings.btDownloadSpeedHardLimit) ? settings.btDownloadSpeedHardLimit : 2621440, MIN_PEERS_FOR_STABLE = isPositiveInteger(settings.btMinPeersForStable) ? settings.btMinPeersForStable : 5, defaults = {
                 peerSearch: {
-                    min: 40,
-                    max: 150,
+                    min: 80,
+                    max: 500,
                     sources: defaultTrackers.concat([ `dht:${ih}` ])
                 },
                 dht: !1,
@@ -72455,7 +72456,9 @@
             handshakeTimeout: opts.handshakeTimeout,
             utp: !1
         }), torrentPath = (blocklist(opts.blocklist), path.join(opts.path, "cache")), wires = swarm.wires, critical = [], refresh = noop, verifications = null;
-        engine.infoHash = infoHash;
+        engine.infoHash = infoHash, swarm.on("error", (function(err) {
+            engine.emit("error", err);
+        }));
         var rechokeIntervalId, rechokeSlots = !1 === opts.uploads || 0 === opts.uploads ? 0 : +opts.uploads || 5, rechokeOptimistic = null, rechokeOptimisticTime = 0;
         engine.path = opts.path, engine.files = [], engine.selection = [], engine.lockedPieces = [], 
         engine.torrent = null, engine.bitfield = null, engine.amInterested = !1, engine.store = null, 
@@ -72495,9 +72498,9 @@
             torrent.files.forEach((function(f) {
                 var sel, file = _.extend({}, f), offsetPiece = Math.floor(file.offset / verificationLen) * (verificationLen / torrent.pieceLength), endPiece = Math.ceil((file.offset + file.length - 1) / verificationLen) * (verificationLen / torrent.pieceLength);
                 file.deselect = function() {
-                    engine.deselect(sel);
+                    sel && (engine.deselect(sel), sel = null);
                 }, file.select = function() {
-                    sel = engine.select(offsetPiece, endPiece, !1);
+                    return sel && -1 !== engine.selection.indexOf(sel) ? sel : (sel = engine.select(offsetPiece, endPiece, !1));
                 }, file.createReadStream = function(opts) {
                     var stream = fileStream(engine, file, opts);
                     return eos(stream, (function() {
@@ -72594,7 +72597,7 @@
                 var unchoked = wires.filter((function(peer) {
                     return !peer.peerChoking;
                 })).length, normalRange = 1 - Math.max(0, Math.min(1, (unchoked - 1) / 29));
-                return Math.round(45 * Math.pow(normalRange, 4) + 5);
+                return Math.round(96 * Math.pow(normalRange, 2) + 16);
             }, shufflePriority = function(i) {
                 for (var last = i, j = i; j < engine.selection.length && engine.selection[j].priority; j++) last = j;
                 engine.selection.splice(last, 0, engine.selection.splice(i, 1)[0]);
@@ -72632,12 +72635,12 @@
                 })), engine.selection.length && wire.interested();
                 var id, onchoketimeout = function() {
                     if (swarm.queued > 2 * (swarm.size - swarm.wires.length) && wire.amInterested) return wire.destroy();
-                    id = setTimeout(onchoketimeout, 5e3);
+                    id = setTimeout(onchoketimeout, 15e3);
                 };
                 wire.on("close", (function() {
                     clearTimeout(id);
                 })), wire.on("choke", (function() {
-                    clearTimeout(id), id = setTimeout(onchoketimeout, 5e3);
+                    clearTimeout(id), id = setTimeout(onchoketimeout, 15e3);
                 })), wire.on("unchoke", (function() {
                     clearTimeout(id);
                 }));
@@ -72657,7 +72660,7 @@
                         wire.isSeeder = !0;
                     }
                 };
-                wire.on("bitfield", checkseeder), wire.on("have", checkseeder), checkseeder(), id = setTimeout(onchoketimeout, 5e3);
+                wire.on("bitfield", checkseeder), wire.on("have", checkseeder), checkseeder(), id = setTimeout(onchoketimeout, 15e3);
             }, rechokeSort = function(a, b) {
                 return a.downSpeed != b.downSpeed ? a.downSpeed > b.downSpeed ? -1 : 1 : a.upSpeed != b.upSpeed ? a.upSpeed > b.upSpeed ? -1 : 1 : a.wasChoked != b.wasChoked ? a.wasChoked ? 1 : -1 : a.salt - b.salt;
             };
@@ -72757,7 +72760,7 @@
             engine.removeAllListeners(), swarm.destroy(), clearInterval(rechokeIntervalId), 
             engine.store ? engine.store.close(cb) : cb && process.nextTick(cb);
         }, engine.listen = function(port, cb) {
-            if ("function" == typeof port) return that.listen(0, port);
+            if ("function" == typeof port) return engine.listen(6881, port);
             engine.port = port || 6881, swarm.listen(engine.port, cb);
         }, engine;
     };
@@ -72882,7 +72885,11 @@
                         swarm._onincoming(connection, wire);
                     }), !0);
                 };
-                servers.push(net.createServer(onconnection)), swarm.utp && servers.push(utp.createServer(onconnection));
+                servers.push(net.createServer(onconnection)), swarm.utp && servers.push(utp.createServer(onconnection)), servers.forEach((function(server) {
+                    server.on("error", (function(err) {
+                        swarm.emit("error", err);
+                    }));
+                }));
                 var loop = function(i) {
                     if (i < servers.length) return servers[i].listen(port, loop.bind(null, i + 1));
                     pool.listening = !0, Object.keys(swarms).forEach((function(infoHash) {
@@ -74736,7 +74743,7 @@
         this.length = opts.end - opts.start + 1, this.startPiece = offset / pieceLength | 0, 
         this.endPiece = (opts.end + file.offset) / pieceLength | 0, this.bufferPieces = engine.buffer ? engine.buffer / pieceLength | 0 : null, 
         this._destroyed = !1, this._engine = engine, this._piece = this.startPiece, this._missing = this.length, 
-        this._critical = 0 | Math.min(1048576 / pieceLength, 4), this._readpipe = new bagpipe(2), 
+        this._critical = Math.max(1, Math.min(Math.ceil(4194304 / pieceLength), 8)), this._readpipe = new bagpipe(2),
         this._offset = offset - this.startPiece * pieceLength, this.selection = engine.select(this.startPiece, this.endPiece, !opts.hasOwnProperty("priority") || opts.priority, this.notify.bind(this)), 
         this.bufferPieces && (this.selection.selectTo = Math.min(this.endPiece, this._piece + this.bufferPieces), 
         this.selection.readFrom = this._piece), debug("open file stream with selection %s:%s ", +this.startPiece, this.endPiece);
@@ -80685,13 +80692,16 @@
             if (await init(), !mediaSegments.has(targetSequenceNumber)) throw new Error("Sequence number out of range");
             const targetMediaSegment = mediaSegments.get(targetSequenceNumber);
             if (null === targetMediaSegment.buffer || targetMediaSegment.extraSegments.some((({buffer: buffer}) => null === buffer))) {
-                targetSequenceNumber !== sequenceNumber && (convertMutex.cancel(), stop());
                 const release = await convertMutex.acquire();
                 if (null !== targetMediaSegment.buffer) return release(), debug(`mediaSegment:buffered:${targetSequenceNumber}`), 
                 Buffer.concat([ targetMediaSegment.buffer ].concat("video" === stream.track ? targetMediaSegment.extraSegments.map((({buffer: buffer}) => buffer)) : []));
-                "video" !== stream.track && "audio" !== stream.track && targetSequenceNumber === sequenceNumber || clear();
+                if ("video" === stream.track || "audio" === stream.track) {
+                    const minSequenceNumber = targetSequenceNumber - 12;
+                    for (const [mediaSegmentSequenceNumber, mediaSegment] of mediaSegments.entries()) mediaSegmentSequenceNumber < minSequenceNumber && (mediaSegment.buffer = null,
+                    mediaSegment.extraSegments.forEach((extraSegment => extraSegment.buffer = null)));
+                } else targetSequenceNumber !== sequenceNumber && clear();
                 try {
-                    targetSequenceNumber !== sequenceNumber && await seek(targetSequenceNumber);
+                    targetSequenceNumber !== sequenceNumber && (stop(), await seek(targetSequenceNumber));
                     try {
                         await readOutputSegment(targetSequenceNumber);
                     } catch (error) {

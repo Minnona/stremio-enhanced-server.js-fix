@@ -1,6 +1,8 @@
 # stremio-enhanced-server.js-fix
 A fixed version for server.js engine for stremio-enhanced
 
+Current baseline: **Stremio Server 4.21.0**
+
 # Stremio Enhanced `server.js` Changes
 
 ## Torrent / Peer Performance
@@ -38,6 +40,14 @@ A fixed version for server.js engine for stremio-enhanced
     - `Accept-Ranges`
     - ranged torrent `createReadStream()` calls
 
+## HLS Playback Stability
+
+- Queued concurrent HLS segment requests instead of canceling the active FFmpeg conversion
+- Stopped the existing FFmpeg converter before starting a genuine seek replacement
+  - Prevents abandoned FFmpeg processes from accumulating
+- Kept a rolling cache of the 12 most recent audio/video HLS segments
+  - Avoids aggressively clearing every generated A/V segment buffer
+
 ## Unchanged
 
 - Existing Stremio cache behavior
@@ -46,7 +56,7 @@ A fixed version for server.js engine for stremio-enhanced
 - Handshake/request timeout settings
 - Torrent HTTP Range implementation
 - Torrent verification/storage logic
-- Transcoding/player logic
+- Codec selection and transcoding parameters
 
 ## Summary
 
@@ -60,8 +70,10 @@ The patch improves:
 - Peer stability
 - Playback-piece prioritization
 - Prevention of duplicate torrent selections
+- HLS converter stability
+- Reuse of recently generated HLS segments
 
-The goal is to preserve the improved torrent download speeds while fixing cases where a torrent is downloading quickly but playback remains stuck at `00:00`.
+The goal is to preserve improved torrent download speeds while fixing playback startup failures, FFmpeg converter thrashing, and short HLS buffer stalls.
 
 ## Installation
 
