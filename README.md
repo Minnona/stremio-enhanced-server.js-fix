@@ -47,6 +47,8 @@ Current baseline: **Stremio Server 4.21.0**
   - Prevents abandoned FFmpeg processes from accumulating
 - Kept a rolling cache of the 12 most recent audio/video HLS segments
   - Avoids aggressively clearing every generated A/V segment buffer
+- Replaced the removed FFmpeg `-vsync cfr` option with `-fps_mode cfr`
+  - Restores HLS transcoding with FFmpeg 9, including AV1 sources
 
 ## Unchanged
 
@@ -72,6 +74,7 @@ The patch improves:
 - Prevention of duplicate torrent selections
 - HLS converter stability
 - Reuse of recently generated HLS segments
+- FFmpeg 9 transcoding compatibility
 
 The goal is to preserve improved torrent download speeds while fixing playback startup failures, FFmpeg converter thrashing, and short HLS buffer stalls.
 
